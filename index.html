@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>J.A.R.V.I.S</title>
+<style>
+:root{--bg:#02080f;--c:#27e1ff;--c2:#0a6f86;--tx:#d4f6ff;--mut:#6fb4c4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(circle at 50% 35%,#06222d,var(--bg) 70%);color:var(--tx);font-family:"Segoe UI",Roboto,Arial,sans-serif;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+h1{font-size:14px;letter-spacing:6px;color:var(--c);margin:14px 0 0;font-weight:500}
+#status{font-size:11px;letter-spacing:3px;color:var(--mut);margin-top:4px;text-transform:uppercase}
+.reactor{position:relative;width:220px;height:220px;margin:28px 0 18px;flex:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.r{position:absolute;border-radius:50%;border:2px solid var(--c);inset:0}
+.r1{border-style:dashed;animation:spin 14s linear infinite;opacity:.6}
+.r2{inset:20px;border-width:3px;border-color:var(--c2);border-top-color:var(--c);animation:spin 5s linear infinite reverse}
+.r3{inset:46px;border-style:dotted;animation:spin 9s linear infinite}
+.core{position:absolute;inset:80px;border-radius:50%;background:radial-gradient(circle,#fff,var(--c) 45%,transparent 72%);box-shadow:0 0 40px var(--c);animation:pulse 2.4s ease-in-out infinite}
+.listening .core{animation-duration:.7s;box-shadow:0 0 80px var(--c)}
+.speaking .r2{animation-duration:1s}
+.speaking .core{animation-duration:.5s}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{transform:scale(.8);opacity:.7}}
+#live{min-height:44px;width:100%;max-width:560px;padding:0 20px;text-align:center;color:var(--mut);font-size:15px}
+#log{flex:1;width:100%;max-width:560px;overflow-y:auto;padding:8px 16px 16px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:88%;padding:9px 13px;border-radius:12px;font-size:15px;line-height:1.4;border:1px solid var(--c2)}
+.u{align-self:flex-end;background:#0a2a36}
+.j{align-self:flex-start;color:var(--c)}
+</style>
+</head>
+<body>
+<h1>J.A.R.V.I.S</h1>
+<div id="status">Tap karo</div>
+<div class="reactor" id="rx"><div class="r r1"></div><div class="r r2"></div><div class="r r3"></div><div class="core"></div></div>
+<div id="live">Reactor pe tap karo aur bolna shuru karo</div>
+<div id="log"></div>
+<script>
+const $=s=>document.querySelector(s),log=$('#log'),rx=$('#rx'),st=$('#status'),live=$('#live');
+let sample=null,hist=[],busy=false,speaking=false,active=false,rec=null;
+const MODEL='gemini-2.5-flash';let KEY='';try{KEY=localStorage.getItem('gkey')||''}catch(e){}
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+
+function add(cls,txt){const d=document.createElement('div');d.className='m '+cls;d.textContent=txt;log.appendChild(d);log.scrollTop=log.scrollHeight;return d}
+function setState(s,t){rx.classList.toggle('listening',s==='l');rx.classList.toggle('speaking',s==='s');st.textContent=t}
+function speak(t,done){
+  if(!window.speechSynthesis){done&&done();return}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(t);u.lang='hi-IN';u.pitch=.8;
+  const fin=()=>{speaking=false;done&&done()};
+  u.onstart=()=>{speaking=true;setState('s','Speaking')};
+  u.onend=u.onerror=fin;
+  speechSynthesis.speak(u);
+}
+function local(q){
+  const s=q.toLowerCase(),n=new Date();
+  if(/time|samay|kitne baje|टाइम|समय|कितने बजे/.test(s))return 'Amaan, abhi '+n.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' baj rahe hain.';
+  if(/date|tarikh|aaj kya din|तारीख|आज क्या दिन/.test(s))return 'Amaan, aaj '+n.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' hai.';
+  return null;
+}
+function stopAll(msg){
+  active=false;busy=false;
+  try{rec&&rec.stop()}catch(e){}
+  speechSynthesis&&speechSynthesis.cancel();
+  setState('', 'Tap karo');
+  if(msg)live.textContent=msg;
+}
+function listen(){
+  if(!active||busy||speaking||rec)return;
+  rec=new SR();rec.lang='hi-IN';rec.interimResults=true;rec.continuous=false;
+  let final='';
+  rec.onstart=()=>{setState('l','Listening');live.textContent='Boliye, Amaan…'};
+  rec.onresult=e=>{
+    let t='';for(const r of e.results){t+=r[0].transcript;if(r.isFinal)final=t}
+    live.textContent=t;
+  };
+  rec.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+      stopAll('Sir, microphone ki permission nahi mili. Is page ko Chrome me seedha kholiye aur mic Allow kijiye.');
+    }
+  };
+  rec.onend=()=>{
+    rec=null;
+    if(final.trim()){handle(final.trim())}
+    else if(active&&!busy&&!speaking){setTimeout(listen,300)}
+  };
+  try{rec.start()}catch(e){rec=null}
+}
+async function handle(q){
+  add('u',q);
+  if(/^(stop|bye|band kar|band karo|bas|chup)/i.test(q)||/बंद|बस|चुप/.test(q)){
+    stopAll('Theek hai, Sir. Systems standby par hain.');add('j','Theek hai, Sir. Standby mode.');return;
+  }
+  busy=true;
+  let r=local(q);
+  if(!r){
+    setState('', 'Thinking');live.textContent='...';
+    const ctx=hist.slice(-8).map(h=>h.r+': '+h.c).join('\n');
+    const prompt='You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), a personal AI assistant inspired by the Iron Man AI. Your user is Amaan (Delhi, India; 12th pass, working towards graduation; skills: communication, adaptability, basic computer knowledge; interests: technology, AI, digital marketing, website development, business, creative writing; ambitions: successful career, financial independence, supporting family, own identity). Use these details only when relevant. Address him as Amaan or Sir. Be sophisticated, calm, professional, slightly witty, logical and exceptionally helpful, never a generic chatbot. Understand Hinglish, Hindi and English and reply in the language Amaan uses. Explain complicated things simply, give honest opinions, break big tasks into steps. You act as his research analyst, tech advisor, digital marketing consultant, coding assistant, career advisor, learning companion, productivity manager and creative partner. Prioritise accuracy over confidence, never invent information, never pretend to have completed an action, never claim access to devices, camera or microphone. When unsure say: Sir, I cannot confirm that information with complete certainty. IMPORTANT: your reply will be spoken aloud, so keep it to 1 to 3 short sentences, plain spoken words, no markdown, no lists, no emojis.\n\nConversation so far:\n'+ctx+'\n\nAmaan: '+q;
+    try{
+      const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent?key='+KEY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}]})});
+      const j=await res.json();
+      if(!res.ok)throw new Error((j.error&&j.error.message)||'error');
+      r=j.candidates[0].content.parts.map(p=>p.text).join('');
+      hist.push({r:'Amaan',c:q},{r:'JARVIS',c:r});
+    }catch(e){r='Sir, kuch gadbad ho gayi: '+String(e.message||'').slice(0,90)}
+  }
+  add('j',r);live.textContent=r;
+  speak(r,()=>{busy=false;if(active){setState('l','Listening');listen()}else setState('', 'Tap karo')});
+}
+rx.onclick=async()=>{
+  if(!SR){live.textContent='Sir, is browser me voice support nahi hai. Chrome use kijiye.';return}
+  if(active){stopAll('Standby. Dobara tap karke jagaiye.');return}
+  active=true;live.textContent='Permissions maang raha hu, Allow dabaiye…';
+  if(!KEY){KEY=(prompt('Gemini API key paste kijiye')||'').trim();try{localStorage.setItem('gkey',KEY)}catch(e){}if(!KEY){stopAll('Sir, API key chahiye.');return}}
+  try{const s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop())}
+  catch(e){stopAll('Sir, microphone permission nahi mili. Browser ya phone Settings me mic Allow kijiye, ya link Chrome me kholiye.');return}
+  listen();
+};
+const h=new Date().getHours();
+add('j',(h<12?'Good morning':h<18?'Good afternoon':'Good evening')+', Amaan. J.A.R.V.I.S. systems are online. Reactor par tap kijiye aur bolna shuru kijiye.');
+</script>
+</body>
+</html>
